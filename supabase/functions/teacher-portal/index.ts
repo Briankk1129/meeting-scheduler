@@ -1,4 +1,5 @@
-// Deliberately no administrator endpoint and no arbitrary table/query forwarding.
+// Shared public entry: month + roster name. No account or personal token required.
+// This endpoint intentionally permits selection of any active member in that month.
 Deno.serve(async request => {
  const origin=request.headers.get('origin') || '';
  const allowed=(Deno.env.get('ALLOWED_ORIGINS') || '').split(',').map(x=>x.trim()).filter(Boolean);
@@ -10,18 +11,21 @@ Deno.serve(async request => {
  try {
   const text=await request.text();
   if(text.length>50000) return reply(413,{error:'提交内容过大'});
-  const body=JSON.parse(text);
-  if(typeof body.token!=='string'||! /^[a-f0-9]{64}$/.test(body.token)) return reply(401,{error:'链接无效或已过期'});
+  let body;try{body=JSON.parse(text);}catch{return reply(400,{error:'请求无效'});}
+  const uuid=s=>typeof s==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+  if(!body||!Number.isInteger(body.year)||body.year<2000||body.year>2200||!Number.isInteger(body.month)||body.month<1||body.month>12) return reply(400,{error:'月份无效'});
+  if(body.teacher_id!=null&&!uuid(body.teacher_id))return reply(400,{error:'班主任无效'});
   if(body.action!=='read'&&body.action!=='submit') return reply(400,{error:'请求无效'});
-  if(body.action==='submit'&&(!Array.isArray(body.slots)||body.slots.length>1000||body.slots.some(s=>typeof s!=='string'||! /^[a-f0-9-]{36}$/i.test(s))||!Number.isInteger(body.revision))) return reply(400,{error:'提交内容无效'});
+  const submit=body.action==='submit';
+  if(submit&&(!uuid(body.teacher_id)||!Array.isArray(body.slots)||body.slots.length>1000||body.slots.some(s=>!uuid(s))||!Number.isInteger(body.revision)||!Number.isInteger(body.period_revision))) return reply(400,{error:'提交内容无效'});
   const key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const response=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/teacher_portal',{
+  const response=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/shared_teacher_portal',{
    method:'POST',headers:{'Content-Type':'application/json','apikey':key,'Authorization':'Bearer '+key},
-   body:JSON.stringify({p_token:body.token,p_slots:body.action==='submit'?body.slots:null,p_revision:body.action==='submit'?body.revision:null})
+   body:JSON.stringify({p_year:body.year,p_month:body.month,p_teacher:body.teacher_id||null,p_slots:submit?body.slots:null,p_revision:submit?body.revision:null,p_period_revision:submit?body.period_revision:null})
   });
   const data=await response.json();
   if(!response.ok) {
-   const known=['链接无效或已过期','链接无效或尚未开放','该老师已停用','当前已停止填写','包含未开放的时间','填写内容或可选时间已变化，请刷新后重试'];
+   const known=['月份无效','请选择本月名单中的班主任','当前已停止填写','本月会议时间尚未准备好','会议资料或填写内容已变化，请刷新后重试','包含其他月份或无效的时间'];
    return reply(data.code==='40001'?409:400,{error:known.includes(data.message)?data.message:'暂时无法处理，请联系管理员'});
   }
   return reply(200,data);

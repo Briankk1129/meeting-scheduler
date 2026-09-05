@@ -4,9 +4,11 @@ import {parseImport} from '../excel/import.js';
 let preview=null;
 export function render(ctx) {
  const {root,data:d,period:p}=ctx;
- root.innerHTML=card('班主任档案',`<form id="teacher-form" class="form-grid"><input type="hidden" name="id">${input('name','姓名','text','','required maxlength="80"')}${input('class_name','班级')}${select('active','状态',[['true','启用'],['false','停用']])}<button>保存班主任</button><button type="reset" class="light">取消编辑</button></form><p class="footer-note">保存时加入当前月份。停用会阻止填写和后续排期；有历史数据的老师请使用停用。</p>`)+
+ const url=new URL('../',location.href).href;
+ root.innerHTML=card('统一填写入口',`<p>把同一个链接发给所有班主任。老师选择月份和自己的姓名即可填写，也可以查看本月会议安排。</p><div class="row"><input id="share-link" aria-label="统一填写链接" readonly value="${h(url)}"><button id="copy-link" type="button">复制链接</button><a href="${h(url)}" target="_blank" rel="noopener">打开填写页面</a></div>`)+card('班主任档案',`<form id="teacher-form" class="form-grid"><input type="hidden" name="id">${input('name','姓名','text','','required maxlength="80"')}${input('class_name','班级')}${select('active','状态',[['true','启用'],['false','停用']])}<button>保存班主任</button><button type="reset" class="light">取消编辑</button></form><p class="footer-note">保存时加入当前月份。停用会阻止填写和后续排期；有历史数据的老师请使用停用。</p>`)+
  card('批量添加',`<form id="bulk-form" class="stack"><label>每行一位：姓名，班级<textarea name="text" placeholder="张三，一年1班&#10;李四，一年2班" required></textarea></label><div class="row"><button>批量添加</button><label>或从 Excel 导入<input id="import-file" class="file-input" type="file" accept=".xlsx,.xls,.csv"></label></div></form><p class="footer-note">导入会先预览。原可用时间表也能读取，时间迁移请在导入预览中选择。</p>`)+
- card('班主任名单',`<div class="toolbar">${p?button('add-all','',`将所有启用老师加入${p.month}月`):'<span class="muted">请先创建月份以生成填写链接。</span>'}</div>`+table(['姓名','班级','全局状态','当前月份','填写','操作'],d.teachers.map(t=>{const m=d.members.find(x=>x.teacher_id===t.id);return[h(t.name),h(t.class_name),t.active?'启用':'停用',m?(m.excluded?'本月不安排':'已加入'):'未加入',m?.first_submitted_at?'<span class="badge ok">已填写</span>':'未填写',button('edit',t.id,'编辑')+button('delete',t.id,'删除','danger')+(m?button('link',t.id,'生成链接')+button('revoke',t.id,'撤销链接','light'):'')];})));
+ card('班主任名单',`<div class="toolbar">${p?button('add-all','',`将所有启用老师加入${p.month}月`):'<span class="muted">请先创建排期月份。</span>'}</div>`+table(['姓名','班级','全局状态','当前月份','填写','操作'],d.teachers.map(t=>{const m=d.members.find(x=>x.teacher_id===t.id);return[h(t.name),h(t.class_name),t.active?'启用':'停用',m?(m.excluded?'本月不安排':'已加入'):'未加入',m?.first_submitted_at?'<span class="badge ok">已填写</span>':'未填写',button('edit',t.id,'编辑')+button('delete',t.id,'删除','danger')];})));
+ $('#copy-link').onclick=()=>busy($('#copy-link'),async()=>{await navigator.clipboard.writeText(url);notify('统一填写链接已复制');});
  bindForm('#teacher-form',f=>ctx.mutate('teacher_save',{...f,active:f.active==='true'}));
  bindForm('#bulk-form',async f=>{const teachers=f.text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>{const [name,...rest]=s.split(/[,，\t]/);return{name:name.trim(),class_name:rest.join(' ').trim()};});if(!teachers.length)return;if(!confirm(`新增 ${teachers.length} 位班主任？不会合并同名档案。`))return;await ctx.mutate('teacher_bulk',{teachers});});
  bindActions(async(action,id)=>{
@@ -14,14 +16,7 @@ export function render(ctx) {
  if(action==='edit')return fillForm('#teacher-form',t);
  if(action==='delete'&&confirm(`删除 ${t.name}？有历史记录时将拒绝删除，请改为停用。`))return ctx.mutate('teacher_delete',{id});
  if(action==='add-all')return ctx.mutate('member_add',{teacher_ids:d.teachers.filter(t=>t.active).map(t=>t.id)});
- if(action==='revoke'&&confirm('撤销后该老师已有链接将失效。继续？'))return ctx.mutate('revoke_link',{teacher_id:id});
- if(action==='link'){
-  if(!confirm('生成新链接会使该老师本月的旧链接失效。继续？'))return;
-  const result=await ctx.mutate('issue_link',{teacher_id:id});
-  const url=new URL('../',location.href);url.hash='token='+result.token;
-  dialog(`<h2>${h(t.name)}的本月填写链接</h2><p>请复制后发送给本人。再次生成将使本链接失效。</p><input id="share-link" readonly value="${h(url.href)}"><button id="copy-link">复制链接</button>`);
-  $('#copy-link').onclick=()=>busy($('#copy-link'),async()=>{await navigator.clipboard.writeText(url.href);$('#copy-link').textContent='已复制';});
- }
+
  });
  $('#import-file').onchange=event=>busy(event.target,async()=>{
  const file=event.target.files[0];if(!file)return;

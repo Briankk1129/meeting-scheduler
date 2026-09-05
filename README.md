@@ -9,7 +9,7 @@
 - 前端已配置该项目的 **publishable key**，不包含 service_role 或数据库密码。
 - GitHub Pages 已发布：[班主任入口](https://briankk1129.github.io/meeting-scheduler/) · [管理员入口](https://briankk1129.github.io/meeting-scheduler/admin/)。
 - 主代码仓库：[Briankk1129/meeting-scheduler](https://github.com/Briankk1129/meeting-scheduler)。
-- 正式管理员账号需要在 Supabase Auth 中创建，并授予 admin 角色。
+- 正式管理员账号已创建并授予 admin 角色。
 - 测试记录和各 Phase 的文件/测试/限制见 [阶段交付](docs/PHASES.md)。
 
 ## 本机打开
@@ -47,10 +47,10 @@ on conflict (id) do update set role = 'admin';
 2. 班主任管理 → 新增或批量添加老师；后添加的档案会加入当前月份。
 3. 日期 / 时间段 → 添加每一天和多个时间，设置默认/单段容量。
 4. 负责人管理 → 添加负责人，勾选本月可参加时间；兼任班主任可关联相应档案。
-5. 可选时间权限 → 逐人设置、按日期全选、复制权限或向所有老师追加开放。
-6. 月份管理 → 开放填写。
-7. 班主任管理 → 生成链接、复制后发给本人。重新生成会撤销旧链接。
-8. 填写情况 → 查看提交进度；Dashboard/填写情况自动更新，其他页面提示数据变化以保护未保存的表单。
+5. 月份管理 → 开放填写。草稿或未配置时间的月份显示“会议时间尚未准备好”。
+6. 班主任管理 → 复制统一填写链接，发送给所有班主任。
+7. 班主任打开同一链接，选择月份和自己的姓名/班级，填写全部可参加时间。所有人看到该月相同的时间段，并可查看该月已生成的会议安排。
+8. 填写情况 → 查看提交进度；管理首页/填写情况自动更新，其他页面提示数据变化以保护未保存的表单。
 9. 关闭填写 → 设置固定安排及本月不安排 → 生成并保存排期。
 10. 会议日历查看详情，数据导出下载会议安排和填写情况。
 
@@ -69,18 +69,18 @@ node scripts/build.js
 
 站点路径为 `https://用户名.github.io/仓库名/`，管理员入口追加 `admin/`。所有资源使用相对路径，支持仓库子路径。
 
-只发布 `dist/`。其中包含 HTML、CSS、JS 和浏览器依赖，不包含 SQL、测试、文档或后端源码。token 放在 URL fragment 中，页面读取后清理地址，后续刷新使用当前标签页的 history state。不要在提交页添加第三方统计脚本。
+只发布 `dist/`。其中包含 HTML、CSS、JS 和浏览器依赖，不包含 SQL、测试、文档或后端源码。统一入口不再使用个人 token，旧链接也进入统一选择页面。
 
 ## 在其他 Supabase 项目安装
 
 当前项目已经安装，无需重复执行！安装到全新项目时：
 
-1. 把 `schema.sql`、`functions.sql`、`rls.sql` 按顺序放在一个 `BEGIN; ... COMMIT;` 事务中执行，避免中间状态暴露。
+1. 执行 `supabase/install.sql`（已包含事务与统一入口升级）。
 2. 修改 `js/config.js` 的 URL 和 publishable key。
-3. 部署 `supabase/functions/teacher-portal/index.ts` 为 `teacher-portal`。设置 `verify_jwt=false`，因为此入口使用自己验证的 256-bit 专属 token，不使用老师 Auth JWT。
+3. 部署 `supabase/functions/teacher-portal/index.ts` 为 `teacher-portal`。设置 `verify_jwt=false`，因为按产品要求，此入口公开提供月份和姓名选择，不使用老师 Auth JWT。
 4. Supabase 自动提供 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY` 给 Edge Function；这些值仅用于后端。
-5. 可选设置 Edge Function 的 `ALLOWED_ORIGINS`，逗号分隔的完整来源，例如 `https://yourname.github.io,http://127.0.0.1:4173`。CORS 不代替 token 身份验证。
-6. 运行 `supabase/tests/security.sql`，它会回滚测试数据。不要并发执行同一个测试。
+5. 可选设置 Edge Function 的 `ALLOWED_ORIGINS`，逗号分隔的完整来源，例如 `https://yourname.github.io,http://127.0.0.1:4173`。CORS 仅限制浏览器来源，统一入口不核验填写者身份。
+6. 运行 `supabase/tests/shared-portal.sql`，它会回滚测试数据。旧版 security/isolation.sql 记录个人 token 模式的历史测试，不适用于新版入口。不要并发执行同一个测试。
 7. 创建管理员账号。
 
 ## 数据和权限
@@ -89,14 +89,15 @@ node scripts/build.js
 - 管理员浏览器写入统一走 `admin_command`：服务端检查角色、锁定月份、验证数据和 revision。
 - `profiles` 浏览器只读，普通账号无法提升角色。
 - `anon` 无任何业务表读写权限；普通 authenticated 用户也无法读取后台。
-- token 摘要保存在非公开 `meeting_private` schema，客户端显式拒绝。
-- `teacher_portal` 数据库函数仅允许 service_role 调用；Edge Function 从 token 推导身份，不接收 teacher_id 或任意查询。
-- 老师只能获取本人姓名班级、当前月份标题、获授权时间、本人选择及提交时间。
+- 旧 token 与权限表保留以兼容历史资料，但界面已移除，旧 token RPC 已禁用。
+- `shared_teacher_portal` 数据库函数仅允许 service_role 调用；Edge Function 严格接收月份、名单中的 teacher_id 和时间 UUID，不转发任意查询。
+- 统一入口公开显示当月启用班主任名单、公共时间段和已生成的会议安排；选择姓名后显示该人的已填内容。
+- 可用时间直接关联月份名单与时间段，不再依赖逐人权限表；升级保留已有填写记录。
 - 提交与关闭月份共用数据库行锁；过期版本返回冲突，不覆盖较新的填写。
 - 排期保存再次校验重复安排、容量、可用时间、负责人、固定安排和月份范围。
 - 结果保存为批次；输入更改后旧结果标记过期，导出要求重新排期。
 
-链接相当于填写凭证。获得链接的人可以代填；转发泄露后应撤销重新生成。这是免账号链接方案的身份边界。
+统一入口按姓名自选，不验证身份；任何获得入口的人都可以查看名单、会议安排及选择姓名代填。此为当前明确要求的共享填写方式，前端提交前提示确认姓名和班级。
 
 ## 与原版的差异
 

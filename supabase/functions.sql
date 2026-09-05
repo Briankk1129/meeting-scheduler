@@ -96,17 +96,7 @@ begin
   result=jsonb_build_object('id',sid);
  when 'slot_delete' then delete from public.meeting_slots where id=(p_data->>'id')::uuid and period_id=pid;
  when 'date_delete' then delete from public.meeting_slots where period_id=pid and meeting_date=(p_data->>'meeting_date')::date;
- when 'permissions' then
-  if exists(select 1 from jsonb_array_elements_text(p_data->'slot_ids') s where not exists(select 1 from public.meeting_slots where id=s.value::uuid and period_id=pid)) then raise exception '含其他月份的时间'; end if;
-  for tid in select value::uuid from jsonb_array_elements_text(p_data->'teacher_ids') loop
-   if not exists(select 1 from public.period_teacher_status where period_id=pid and teacher_id=tid) then raise exception '老师不在本月名单'; end if;
-   if coalesce(p_data->>'mode','replace')='replace' then
-    delete from public.fixed_assignments where period_id=pid and teacher_id=tid and slot_id not in(select value::uuid from jsonb_array_elements_text(p_data->'slot_ids'));
-    delete from public.teacher_slot_permissions where period_id=pid and teacher_id=tid and slot_id not in(select value::uuid from jsonb_array_elements_text(p_data->'slot_ids'));
-   end if;
-   insert into public.teacher_slot_permissions(period_id,teacher_id,slot_id) select pid,tid,value::uuid from jsonb_array_elements_text(p_data->'slot_ids') on conflict do nothing;
-   update public.period_teacher_status set submission_revision=submission_revision+1 where period_id=pid and teacher_id=tid;
-  end loop;
+ when 'permissions' then raise exception '已改为所有班主任共用会议时间，无需单独设置权限';
  when 'leader_save' then
   lid=nullif(p_data->>'id','')::uuid;
   if lid is null then insert into public.leaders(name,active,teacher_id) values(trim(p_data->>'name'),coalesce((p_data->>'active')::boolean,true),nullif(p_data->>'teacher_id','')::uuid) returning id into lid;
