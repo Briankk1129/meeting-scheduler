@@ -7,7 +7,7 @@
 - 现有排期核心已迁移，300 组随机输入与原版对照一致。
 - 数据库和 teacher-portal Edge Function 已部署到 `dettcrledxjrhtitsbhx`。
 - 前端已配置该项目的 **publishable key**，不包含 service_role 或数据库密码。
-- GitHub Pages 已发布：[班主任入口](https://briankk1129.github.io/meeting-scheduler/) · [管理员入口](https://briankk1129.github.io/meeting-scheduler/admin/)。
+- GitHub Pages 已发布：[班主任入口](https://briankk1129.github.io/meeting-scheduler/) [班主任入口](https://zaoliqingbaomeeting.pages.dev/)· [管理员入口](https://briankk1129.github.io/meeting-scheduler/admin/)。
 - 主代码仓库：[Briankk1129/meeting-scheduler](https://github.com/Briankk1129/meeting-scheduler)。
 - 正式管理员账号已创建并授予 admin 角色。
 - 测试记录和各 Phase 的文件/测试/限制见 [阶段交付](docs/PHASES.md)。
