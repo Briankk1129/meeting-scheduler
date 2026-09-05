@@ -2,7 +2,7 @@ import {$,$$,escapeHtml as h,busy,notify,statusText} from './utils.js';
 import {requireAdmin} from './auth.js';
 import {requireConfig} from './supabase.js';
 import {snapshot,command} from './api/admin-api.js';
-const views=[['dashboard','管理首页'],['teachers','班主任管理'],['periods','月份管理'],['slots','日期 / 时间段'],['submissions','填写情况'],['leaders','负责人管理'],['scheduler','自动排期'],['calendar','会议日历'],['export','数据导出'],['settings','系统设置']];
+const views=[['dashboard','管理首页'],['teachers','班主任管理'],['periods','月份与会议时间'],['submissions','填写情况'],['leaders','负责人管理'],['scheduler','自动排期'],['calendar','会议日历'],['export','数据导出'],['settings','系统设置']];
 const cloudRevisions=new Map();
 let data,periodId=localStorage.getItem('meeting-period-preference')||'',user,renderTicket=0,channel;
 const current=()=>data?.periods.find(p=>p.id===periodId);
@@ -12,7 +12,7 @@ const ctx={root:$('#view'),get data(){return data},get period(){return current()
  async selectPeriod(id){periodId=id;localStorage.setItem('meeting-period-preference',id);await refresh();}
 };
 async function render(){
- const ticket=++renderTicket;const key=location.hash.replace('#/','').split('?')[0]||'dashboard';const route=views.find(v=>v[0]===key)||views[0];
+ const ticket=++renderTicket;const key=location.hash.replace('#/','').split('?')[0]||'dashboard';const route=views.find(v=>v[0]===(key==='slots'?'periods':key))||views[0];
  $('#view-title').textContent=route[1];$$('#navigation a').forEach(a=>a.classList.toggle('active',a.hash==='#/'+route[0]));
  $('#sidebar').classList.remove('open');
  const mod=await import(`./views/${route[0]}.js`);if(ticket===renderTicket)mod.render(ctx);

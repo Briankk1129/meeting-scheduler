@@ -6,7 +6,7 @@ export const input=(name,label,type='text',value='',extra='')=>`<label>${h(label
 export const select=(name,label,options,value='')=>`<label>${h(label)}<select name="${name}">${options.map(([v,t])=>`<option value="${h(v)}" ${String(v)===String(value)?'selected':''}>${h(t)}</option>`).join('')}</select></label>`;
 export const button=(action,id,label,style='light')=>`<button class="${style}" type="button" data-action="${action}" data-id="${h(id)}">${h(label)}</button>`;
 export function bindForm(id,handler) {const form=$(id);form?.addEventListener('submit',event=>{event.preventDefault();busy(event.submitter,()=>handler(Object.fromEntries(new FormData(form)),form));});}
-export function bindActions(handler) {$$('#view [data-action]').forEach(b=>b.addEventListener('click',()=>busy(b,()=>handler(b.dataset.action,b.dataset.id,b))));}
+export function bindActions(handler,root=$('#view')) {$$('[data-action]',root).forEach(b=>b.addEventListener('click',()=>busy(b,()=>handler(b.dataset.action,b.dataset.id,b))));}
 export function dialog(html){$('#dialog-content').innerHTML=html;$('#details').showModal();}
 export function fillForm(id,data) {const form=$(id);for(const [k,v] of Object.entries(data)){const field=form.elements.namedItem(k);if(field)field.value=v??'';}form.scrollIntoView({behavior:'smooth',block:'center'});}
 export function slotChoices(slots,selected=[],prefix='slot') {

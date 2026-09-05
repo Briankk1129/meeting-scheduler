@@ -206,6 +206,21 @@ begin
   update public.period_teacher_status set excluded=(p_data->>'excluded')::boolean where period_id=pid and teacher_id=tid;
   if not found then raise exception '本月名单中没有该老师'; end if;
   if (p_data->>'excluded')::boolean then delete from public.fixed_assignments where period_id=pid and teacher_id=tid; end if;
+ when 'slot_bulk' then
+  declare added integer; total integer;
+  begin
+   if jsonb_typeof(p_data->'dates') is distinct from 'array' or jsonb_typeof(p_data->'times') is distinct from 'array' then raise exception '请选择日期和时间段'; end if;
+   if jsonb_array_length(p_data->'dates') not between 1 and 31 or jsonb_array_length(p_data->'times') not between 1 and 24 then raise exception '每批请选择1至31天和1至24个时间段'; end if;
+   if exists(select 1 from jsonb_array_elements_text(p_data->'dates') x where x.value is null or extract(year from x.value::date)<>period.year or extract(month from x.value::date)<>period.month) then raise exception '日期必须属于当前月份'; end if;
+   if exists(select 1 from jsonb_array_elements(p_data->'times') x where nullif(x.value->>'start_time','') is null or nullif(x.value->>'end_time','') is null or (x.value->>'start_time')::time >= (x.value->>'end_time')::time) then raise exception '每段结束时间必须晚于开始时间'; end if;
+   select count(*) into total from (select distinct value::date from jsonb_array_elements_text(p_data->'dates')) d cross join (select distinct (value->>'start_time')::time,(value->>'end_time')::time from jsonb_array_elements(p_data->'times')) t;
+   insert into public.meeting_slots(period_id,meeting_date,start_time,end_time,capacity_override,sort_order)
+   select pid,d.dt,t.st,t.et,nullif(p_data->>'capacity_override','')::integer,(select coalesce(max(sort_order),0) from public.meeting_slots where period_id=pid)+row_number() over(order by d.dt,t.st,t.et)
+   from (select distinct value::date dt from jsonb_array_elements_text(p_data->'dates')) d cross join (select distinct (value->>'start_time')::time st,(value->>'end_time')::time et from jsonb_array_elements(p_data->'times')) t
+   on conflict(period_id,meeting_date,start_time,end_time) do nothing;
+   get diagnostics added = row_count;
+   result=jsonb_build_object('added',added,'skipped',total-added);
+  end;
  when 'slot_save' then
   if extract(year from (p_data->>'meeting_date')::date)<>period.year or extract(month from (p_data->>'meeting_date')::date)<>period.month then raise exception '日期必须属于当前月份'; end if;
   sid=nullif(p_data->>'id','')::uuid;
