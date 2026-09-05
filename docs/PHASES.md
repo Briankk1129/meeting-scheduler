@@ -1,6 +1,6 @@
 # 分阶段交付与测试
 
-原文件 `/Users/briankk/Downloads/meeting-scheduler-local/index.html` 未修改。
+用户提供的原版 `meeting-scheduler-local/index.html` 未修改。
 
 ## Phase 1：原版分析
 
@@ -74,7 +74,7 @@
 
 原 XLSX.js 0.18.5 更新为 0.20.3，API 保持兼容，浏览器依赖本地分发。
 
-GitHub Pages 需要用户提供仓库后发布；不把本地 localhost 地址当作老师可访问的线上地址。
+GitHub Pages 已发布到 https://briankk1129.github.io/meeting-scheduler/ 。仓库 main 分支通过 GitHub Actions 自动测试、构建并部署。
 
 ## 已知边界
 
@@ -102,3 +102,11 @@ GitHub Pages 需要用户提供仓库后发布；不把本地 localhost 地址�
 - 390×844 手机填写页、1440×1050 桌面月历截图已检查。
 
 临时账号、月份、老师、负责人、token 和排期数据在验收后清理。截图使用的 2197 年数据仅为隔离测试，交付系统不包含该演示数据。
+
+## 正式部署验证
+
+- GitHub 仓库：Briankk1129/meeting-scheduler，保留原始提交历史。
+- GitHub Actions 测试、构建、Pages 发布全部成功。
+- 已核对线上首页、登录页、主脚本、样式和依赖文件的 SHA-256，与本机验证版本一致。
+- 正式 /admin/ 未登录时跳转登录页；无 token 的班主任入口提示使用专属链接，浏览器控制台无错误。
+- 正式管理员邮箱 briankk1129@gmail.com 尚未出现在 Supabase Auth 用户表，需要用户在控制台创建网站账号后设置 profiles.admin；Supabase 控制台登录账号与本网站登录账号是两回事。
