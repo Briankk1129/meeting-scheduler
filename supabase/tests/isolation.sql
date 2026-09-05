@@ -1,0 +1,46 @@
+-- Additional cross-period, capacity and link-rotation tests. All fixtures rolled back.
+begin;
+insert into auth.users(id,email) values('20000000-0000-4000-8000-000000000001','scheduler-isolation@example.invalid');
+insert into public.profiles(id,role) values('20000000-0000-4000-8000-000000000001','admin');
+select set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000001',true);
+set local role authenticated;
+do $$ declare p uuid; q uuid; t uuid; s uuid; foreign_s uuid; l uuid; rev int; tok text; begin
+ p=(public.admin_command('period_create','{"year":2196,"month":9,"title":"ISOLATION-A","default_capacity":1}')->>'id')::uuid;
+ q=(public.admin_command('period_create','{"year":2196,"month":10,"title":"ISOLATION-B"}')->>'id')::uuid;
+ select revision into rev from public.meeting_periods where id=q;
+ foreign_s=(public.admin_command('slot_save',jsonb_build_object('period_id',q,'revision',rev,'meeting_date','2196-10-01','start_time','19:00','end_time','19:30'))->>'id')::uuid;
+ select revision into rev from public.meeting_periods where id=p;
+ t=(public.admin_command('teacher_save',jsonb_build_object('period_id',p,'revision',rev,'name','隔离测试'))->>'id')::uuid;
+ select revision into rev from public.meeting_periods where id=p;
+ begin perform public.admin_command('permissions',jsonb_build_object('period_id',p,'revision',rev,'teacher_ids',jsonb_build_array(t),'slot_ids',jsonb_build_array(foreign_s)));raise exception 'cross period accepted';exception when raise_exception then if sqlerrm='cross period accepted' then raise;end if;end;
+ perform public.admin_command('legacy_import',jsonb_build_object('period_id',p,'revision',rev,'teachers','[{"name":"导入测试","class_name":"测试班"}]'::jsonb,'slots','[{"meeting_date":"2196-09-07","start_time":"19:00","end_time":"19:30"}]'::jsonb,'availability','[[true]]'::jsonb));
+ select teacher_id into t from public.period_teacher_status where period_id=p and name_snapshot='导入测试';
+ select id into s from public.meeting_slots where period_id=p;
+ if not exists(select 1 from public.teacher_availability where period_id=p and teacher_id=t and slot_id=s) then raise exception 'legacy import failed';end if;
+ select revision into rev from public.meeting_periods where id=p;
+ l=(public.admin_command('leader_save',jsonb_build_object('period_id',p,'revision',rev,'name','隔离负责人'))->>'id')::uuid;
+ select revision into rev from public.meeting_periods where id=p;
+ perform public.admin_command('leader_slots',jsonb_build_object('period_id',p,'revision',rev,'leader_id',l,'slot_ids',jsonb_build_array(s)));
+ select revision into rev from public.meeting_periods where id=p;
+ perform public.admin_command('period_update',jsonb_build_object('period_id',p,'revision',rev,'status','collecting'));
+ select revision into rev from public.meeting_periods where id=p;
+ tok=public.admin_command('issue_link',jsonb_build_object('period_id',p,'revision',rev,'teacher_id',t))->>'token';
+ perform set_config('test.old_token',tok,true);
+ tok=public.admin_command('issue_link',jsonb_build_object('period_id',p,'revision',rev,'teacher_id',t))->>'token';
+ perform set_config('test.new_token',tok,true);perform set_config('test.pid',p::text,true);perform set_config('test.tid',t::text,true);perform set_config('test.sid',s::text,true);
+ perform public.admin_command('slot_save',jsonb_build_object('period_id',p,'revision',rev,'id',s,'meeting_date','2196-09-07','start_time','19:00','end_time','19:30','capacity_override',0));
+ select revision into rev from public.meeting_periods where id=p;
+ perform public.admin_command('period_update',jsonb_build_object('period_id',p,'revision',rev,'status','closed'));
+ select revision into rev from public.meeting_periods where id=p;
+ begin perform public.admin_command('save_schedule',jsonb_build_object('period_id',p,'revision',rev,'algorithm_version','legacy-matching-1.0','assignments',jsonb_build_array(jsonb_build_object('teacher_id',t,'slot_id',s,'is_fixed',false))));raise exception 'zero capacity accepted';exception when raise_exception then if sqlerrm='zero capacity accepted' then raise;end if;end;
+ if exists(select 1 from public.schedule_runs where period_id=p) then raise exception 'partial schedule committed';end if;
+end $$;
+reset role;
+set local role service_role;
+do $$ begin
+ begin perform public.teacher_portal(current_setting('test.old_token'));raise exception 'revoked token accepted';exception when raise_exception then if sqlerrm='revoked token accepted' then raise;end if;end;
+ if public.teacher_portal(current_setting('test.new_token'))->>'name'<>'导入测试' then raise exception 'wrong identity';end if;
+end $$;
+reset role;
+select 'PASS: cross-period rejection, legacy import, token rotation, capacity validation, atomic rollback' as test_result;
+rollback;

@@ -1,0 +1,2 @@
+[functions.teacher-portal]
+verify_jwt = false

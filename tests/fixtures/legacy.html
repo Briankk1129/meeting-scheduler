@@ -1,0 +1,1089 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>班主任会议自动排期工具</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #d9e1ec;
+      --blue: #2563eb;
+      --blue2: #eff6ff;
+      --green: #16a34a;
+      --red: #dc2626;
+      --amber: #d97706;
+      --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 20px 28px 14px;
+      background: linear-gradient(135deg, #dbeafe 0%, #f8fafc 62%);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    .subtitle { color: var(--muted); line-height: 1.55; max-width: 1080px; font-size: 14px; }
+    main { padding: 16px 28px 42px; max-width: 1320px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; align-items: start; }
+    .control-grid { display: grid; grid-template-columns: minmax(280px, 1.1fr) minmax(250px, 0.9fr) minmax(280px, 1fr) minmax(220px, 0.8fr); gap: 12px; align-items: stretch; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 17px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .add-teacher-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin-top: 8px; }
+    .add-teacher-row input { min-width: 0; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.42; }
+    input[type="file"] {
+      padding: 9px;
+      border: 1px dashed #93c5fd;
+      background: #f8fbff;
+      border-radius: 10px;
+      width: min(100%, 420px);
+    }
+    input[type="number"], input[type="text"], select {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 13px;
+      background: white;
+    }
+    input[type="number"] { width: 90px; }
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 8px 11px;
+      background: var(--blue);
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 650;
+    }
+    button.secondary { background: #475569; }
+    button.light { background: #e5edff; color: #1d4ed8; }
+    button.danger { background: var(--red); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .statbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .pill { padding: 5px 8px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 12px; }
+    .pill.ok { background: #dcfce7; color: #166534; }
+    .pill.warn { background: #fef3c7; color: #92400e; }
+    .pill.bad { background: #fee2e2; color: #991b1b; }
+    .table-wrap {
+      max-width: 100%;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: white;
+    }
+    #previewArea.table-wrap { max-height: 520px; }
+    table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 640px; }
+    th, td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: middle; font-size: 12px; }
+    th:last-child, td:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+    th { background: #f8fafc; position: sticky; top: 0; z-index: 2; font-weight: 700; padding-top: 5px; padding-bottom: 5px; }
+    th:first-child, td:first-child { position: sticky; left: 0; background: white; z-index: 1; }
+    th:first-child { background: #f8fafc; z-index: 3; }
+    .name-input { width: 118px; min-height: 28px; padding: 4px 7px; font-size: 12px; }
+    .name-cell { display: grid; gap: 4px; }
+    .row-tools { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+    .click-option { display: inline-flex; gap: 4px; align-items: center; min-height: 24px; padding: 3px 6px; border: 1px solid #e2e8f0; border-radius: 999px; background: #f8fafc; cursor: pointer; user-select: none; white-space: nowrap; }
+    .click-option:hover { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+    .click-option input { margin: 0; cursor: pointer; }
+    tr.excluded td { background: #f8fafc; color: #94a3b8; }
+    tr.excluded td:first-child { background: #f8fafc; }
+    .center { text-align: center; }
+    .check-cell { padding: 0; }
+    .cell-check { display: grid; place-items: center; width: 100%; min-height: 30px; cursor: pointer; }
+    .cell-check:hover { background: #eff6ff; }
+    .cell-check input { transform: scale(1.02); margin: 0; cursor: pointer; }
+    #previewArea th:first-child, #previewArea td:first-child { min-width: 132px; }
+    #previewArea th:not(:first-child), #previewArea td:not(:first-child) { min-width: 94px; max-width: 112px; }
+    #previewArea th { white-space: normal; line-height: 1.18; }
+    .slot-limit-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid #eef2f7; }
+    .slot-limit-label { min-width: 0; overflow-wrap: anywhere; line-height: 1.22; font-size: 12px; }
+    .slot-limit-row input { width: 58px; min-height: 26px; padding: 4px 6px; font-size: 12px; }
+    .slot-limit-row:last-child { border-bottom: 0; }
+    #slotLimitArea { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: 3px; margin-top: 6px !important; }
+    .schedule-day {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .schedule-day-title {
+      padding: 6px 9px;
+      background: var(--blue2);
+      font-weight: 750;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+    .schedule-list { display: flex; flex-wrap: wrap; gap: 5px 8px; padding: 7px 9px 9px; margin: 0; list-style: none; }
+    .schedule-list li { margin: 0; padding: 3px 7px; border-radius: 999px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; line-height: 1.3; }
+    .empty { padding: 9px 10px; color: var(--muted); background: #f8fafc; border-radius: 10px; font-size: 13px; }
+    .warn-box { padding: 9px 11px; border-radius: 10px; background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; line-height: 1.45; }
+    .success-box { padding: 9px 11px; border-radius: 10px; background: #ecfdf5; color: #166534; border: 1px solid #bbf7d0; line-height: 1.45; font-size: 13px; }
+    .list-plain { margin: 0; padding-left: 22px; line-height: 1.8; }
+    .footer-note { margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .compact-card { height: clamp(235px, 30vh, 285px); min-height: 235px; overflow: visible; display: flex; flex-direction: column; }
+    .compact-card > .row,
+    .compact-card > .stack { flex: 0 0 auto; }
+    .compact-card .footer-note,
+    .compact-card .hint,
+    .compact-card .statbar { flex: 0 0 auto; }
+    .compact-card:first-child { overflow: auto; }
+    .compact-card:nth-child(2) { overflow: hidden; }
+    .stack { display: grid; gap: 7px; }
+    .stack label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    .manual-list { margin-top: 8px; display: grid; gap: 5px; flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .manual-item { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 5px 7px; border-radius: 8px; background: #f8fafc; font-size: 12px; }
+    .manual-item button { padding: 5px 8px; border-radius: 8px; font-size: 12px; background: #64748b; }
+    @media (max-height: 760px) and (min-width: 981px) {
+      header { padding-top: 14px; padding-bottom: 10px; }
+      main { padding-top: 12px; }
+      .compact-card { height: 240px; min-height: 240px; }
+      .card { margin-bottom: 10px; }
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+      .control-grid { grid-template-columns: 1fr; }
+      .compact-card { height: auto; min-height: 0; }
+      header, main { padding-left: 16px; padding-right: 16px; }
+      h1 { font-size: 23px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>班主任会议自动排期工具</h1>
+    <div class="subtitle">
+      上传 Excel 后，程序会自动识别“班主任 / 任老师 / 老师 / 姓名”等姓名字段，以及类似“5/22 19:00~21:00”的时间字段。姓名与时间交叉单元格只要有任意内容，就视为该老师可以在该时间开会。每位老师只会被安排一次。
+    </div>
+  </header>
+
+  <main>
+    <div class="control-grid">
+        <div class="card compact-card">
+          <h2>1. 上传 Excel 并识别</h2>
+          <div class="row">
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+            <button id="saveBtn" class="secondary" disabled>保存数据</button>
+            <button id="clearBtn" class="danger">清空数据</button>
+          </div>
+          <div class="add-teacher-row">
+            <input id="newTeacherName" type="text" placeholder="输入老师姓名" />
+            <button id="addTeacherBtn" class="light" disabled>添加老师</button>
+          </div>
+          <div id="loadStatus" class="footer-note"></div>
+          <div id="stats" class="statbar"></div>
+          <div id="libraryWarning" class="footer-note"></div>
+        </div>
+
+        <div class="card compact-card">
+          <h2>2. 每天人数上限</h2>
+          <div class="row">
+            <label for="globalLimit">默认每个时间段最多安排</label>
+            <input id="globalLimit" type="number" min="1" step="1" value="3" />
+            <span>人</span>
+          </div>
+          <div class="hint" style="margin-top:6px;">可给某个时间单独设置上限，留空使用默认值。</div>
+          <div id="slotLimitArea"></div>
+        </div>
+
+        <div class="card compact-card">
+          <h2>3. 指定某人某天开会</h2>
+          <div class="stack">
+            <label>老师
+              <select id="manualTeacherSelect"></select>
+            </label>
+            <label>日期时间
+              <select id="manualSlotSelect"></select>
+            </label>
+            <button id="addManualBtn" class="light" disabled>添加指定安排</button>
+          </div>
+          <div id="manualList" class="manual-list"></div>
+        </div>
+
+        <div class="card compact-card">
+          <h2>4. 生成与导出</h2>
+          <div class="row">
+            <button id="generateBtn" disabled>自动排完所有人</button>
+            <button id="exportBtn" class="light" disabled>导出 Excel</button>
+          </div>
+          <div id="generateStatus" class="footer-note"></div>
+        </div>
+    </div>
+
+    <div class="card">
+      <h2>5. 识别结果预览与修改</h2>
+      <div id="previewArea" class="empty">请先上传 Excel。上传后可以在这里修改老师姓名，并手动勾选或取消可开会时间。</div>
+    </div>
+
+    <div class="card">
+      <h2>6. 会议安排结果</h2>
+      <div id="scheduleArea" class="empty">还没有生成会议安排。</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>未填写可开会时间名单</h2>
+        <div id="noAvailabilityArea" class="empty">暂无。</div>
+      </div>
+      <div class="card">
+        <h2>未能安排名单</h2>
+        <div id="unscheduledArea" class="empty">暂无。</div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const STORAGE_KEY = 'meeting-scheduler-local-v1';
+    const REQUIRED_LEADERS = ['马金开', '殷卓越'];
+    const state = {
+      fileName: '',
+      teachers: [],
+      slots: [],
+      globalLimit: 3,
+      slotLimits: {},
+      fixedAssignments: [],
+      excludedTeacherIds: [],
+      schedule: null,
+      lastDetection: null
+    };
+
+    const el = {
+      fileInput: document.getElementById('fileInput'),
+      newTeacherName: document.getElementById('newTeacherName'),
+      addTeacherBtn: document.getElementById('addTeacherBtn'),
+      saveBtn: document.getElementById('saveBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      loadStatus: document.getElementById('loadStatus'),
+      stats: document.getElementById('stats'),
+      previewArea: document.getElementById('previewArea'),
+      globalLimit: document.getElementById('globalLimit'),
+      slotLimitArea: document.getElementById('slotLimitArea'),
+      generateBtn: document.getElementById('generateBtn'),
+      exportBtn: document.getElementById('exportBtn'),
+      manualTeacherSelect: document.getElementById('manualTeacherSelect'),
+      manualSlotSelect: document.getElementById('manualSlotSelect'),
+      addManualBtn: document.getElementById('addManualBtn'),
+      manualList: document.getElementById('manualList'),
+      generateStatus: document.getElementById('generateStatus'),
+      scheduleArea: document.getElementById('scheduleArea'),
+      noAvailabilityArea: document.getElementById('noAvailabilityArea'),
+      unscheduledArea: document.getElementById('unscheduledArea'),
+      libraryWarning: document.getElementById('libraryWarning')
+    };
+
+    function cleanCell(value) {
+      if (value === null || value === undefined) return '';
+      return String(value).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function compact(value) {
+      return cleanCell(value).replace(/\s+/g, '');
+    }
+
+    function escapeHtml(str) {
+      return cleanCell(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function isNameHeader(value) {
+      const s = compact(value);
+      return /(班主任|任老师|老師|老师|教师|教師|姓名|班主.*任老|负责人|負責人)/.test(s);
+    }
+
+    function isTimeHeader(value) {
+      const s = cleanCell(value);
+      if (!s) return false;
+      const hasDate = /(\d{4}[\/\-.年]\s*\d{1,2}|\d{1,2}\s*[\/\-.月]\s*\d{1,2}|\d{1,2}\s*月\s*\d{1,2}\s*日?)/.test(s);
+      const hasTime = /(\d{1,2}\s*[:：.]\s*\d{2}|\d{1,2}\s*[点時时])/.test(s);
+      const hasRange = /[~～\-—–至到]/.test(s);
+      return hasDate && (hasTime || hasRange);
+    }
+
+    function looksLikePersonName(value) {
+      const s = cleanCell(value);
+      if (!s) return false;
+      if (s.length > 12) return false;
+      if (isTimeHeader(s) || isNameHeader(s)) return false;
+      return /[\u4e00-\u9fa5ぁ-んァ-ンA-Za-z]/.test(s);
+    }
+
+    function detectStructure(rows) {
+      const maxRows = Math.min(rows.length, 30);
+      let best = null;
+
+      for (let r = 0; r < maxRows; r++) {
+        const row = rows[r] || [];
+        const nameCol = row.findIndex(isNameHeader);
+        const timeCols = [];
+        for (let c = 0; c < row.length; c++) {
+          if (isTimeHeader(row[c])) timeCols.push(c);
+        }
+        let score = timeCols.length * 10 + (nameCol >= 0 ? 8 : 0);
+        if (timeCols.length >= 2 && nameCol < 0) score += 2;
+        if (!best || score > best.score) best = { headerRow: r, nameCol, timeCols, score };
+      }
+
+      if (!best || best.timeCols.length === 0) {
+        throw new Error('没有识别到日期时间字段。请确认表头中包含类似“5/22 19:00~21:00”的字段。');
+      }
+
+      if (best.nameCol < 0) {
+        const firstTimeCol = Math.min(...best.timeCols);
+        let candidate = 0;
+        let bestCount = -1;
+        for (let c = 0; c < firstTimeCol; c++) {
+          let count = 0;
+          for (let r = best.headerRow + 1; r < rows.length; r++) {
+            if (looksLikePersonName(rows[r]?.[c])) count++;
+          }
+          if (count > bestCount) {
+            bestCount = count;
+            candidate = c;
+          }
+        }
+        best.nameCol = candidate;
+      }
+
+      return best;
+    }
+
+    function normalizeRows(rows) {
+      return rows
+        .map(row => (row || []).map(cleanCell))
+        .filter(row => row.some(cell => cleanCell(cell) !== ''));
+    }
+
+    function readWorkbook(file) {
+      if (!window.XLSX) {
+        throw new Error('XLSX 读取库没有加载成功。请确认电脑可以访问网络，或使用“启动.command”通过本地服务打开页面。');
+      }
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = event => {
+          try {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array', cellDates: false });
+            const firstSheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[firstSheetName];
+            const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+            resolve(normalizeRows(rawRows));
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error('文件读取失败。'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    async function handleFileUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        el.loadStatus.innerHTML = '<span class="pill warn">正在识别 Excel...</span>';
+        const rows = await readWorkbook(file);
+        const detection = detectStructure(rows);
+        const header = rows[detection.headerRow] || [];
+        const slots = detection.timeCols.map((col, index) => ({
+          id: `slot-${index}-${col}`,
+          col,
+          label: cleanCell(header[col]) || `时间段 ${index + 1}`,
+          order: index
+        }));
+
+        const teachers = [];
+        for (let r = detection.headerRow + 1; r < rows.length; r++) {
+          const row = rows[r] || [];
+          const name = cleanCell(row[detection.nameCol]);
+          if (!name || isNameHeader(name) || isTimeHeader(name)) continue;
+          const availability = {};
+          slots.forEach(slot => {
+            availability[slot.id] = cleanCell(row[slot.col]) !== '';
+          });
+          teachers.push({
+            id: `teacher-${Date.now()}-${r}-${Math.random().toString(16).slice(2)}`,
+            name,
+            availability
+          });
+        }
+
+        state.fileName = file.name;
+        state.teachers = teachers;
+        state.slots = slots;
+        state.slotLimits = {};
+        state.fixedAssignments = [];
+        state.excludedTeacherIds = [];
+        state.schedule = null;
+        state.lastDetection = detection;
+        state.globalLimit = Number(el.globalLimit.value) || 3;
+        saveToLocal(false);
+        renderAll();
+        el.loadStatus.innerHTML = `<span class="pill ok">已读取：${escapeHtml(file.name)}</span>`;
+      } catch (error) {
+        el.loadStatus.innerHTML = `<div class="warn-box">识别失败：${escapeHtml(error.message)}</div>`;
+      } finally {
+        el.fileInput.value = '';
+      }
+    }
+
+    function getAvailableSlots(teacher) {
+      return state.slots.filter(slot => teacher.availability?.[slot.id]);
+    }
+
+    function isRequiredLeaderName(name) {
+      return REQUIRED_LEADERS.includes(cleanCell(name));
+    }
+
+    function getRequiredLeaders() {
+      return REQUIRED_LEADERS.map(name => ({
+        name,
+        teacher: state.teachers.find(t => cleanCell(t.name) === name) || null
+      }));
+    }
+
+    function leadersAvailableForSlot(slotId) {
+      return getRequiredLeaders().some(item => item.teacher?.availability?.[slotId]);
+    }
+
+    function availableLeaderNamesForSlot(slotId) {
+      return getRequiredLeaders()
+        .filter(item => item.teacher?.availability?.[slotId])
+        .map(item => item.name);
+    }
+
+    function getSchedulableSlots() {
+      return state.slots.filter(slot => leadersAvailableForSlot(slot.id));
+    }
+
+    function getLimit(slotId) {
+      const custom = state.slotLimits[slotId];
+      const value = custom === '' || custom === undefined || custom === null ? state.globalLimit : Number(custom);
+      return Math.max(0, Math.floor(Number(value) || 0));
+    }
+
+    function fixedTeacherIds() {
+      return new Set((state.fixedAssignments || []).map(item => item.teacherId));
+    }
+
+    function excludedTeacherIds() {
+      return new Set(state.excludedTeacherIds || []);
+    }
+
+    function renderStats() {
+      const total = state.teachers.length;
+      const excluded = excludedTeacherIds().size;
+      const activeTeachers = state.teachers.filter(t => !excludedTeacherIds().has(t.id));
+      const withAvailability = activeTeachers.filter(t => getAvailableSlots(t).length > 0).length;
+      const noAvailability = activeTeachers.length - withAvailability;
+      el.stats.innerHTML = total ? `
+        <span class="pill">老师人数：${total}</span>
+        <span class="pill">时间段：${state.slots.length}</span>
+        <span class="pill ok">已填写可开会时间：${withAvailability}</span>
+        <span class="pill warn">未填写时间：${noAvailability}</span>
+        <span class="pill bad">不安排：${excluded}</span>
+      ` : '';
+    }
+
+    function renderPreview() {
+      if (!state.teachers.length || !state.slots.length) {
+        el.previewArea.className = 'empty';
+        el.previewArea.textContent = '请先上传 Excel。上传后可以在这里修改老师姓名，并手动勾选或取消可开会时间。';
+        return;
+      }
+      el.previewArea.className = 'table-wrap';
+      const header = `
+        <thead><tr>
+          <th>老师姓名</th>
+          ${state.slots.map(slot => `<th class="center">${escapeHtml(slot.label)}</th>`).join('')}
+        </tr></thead>
+      `;
+      const body = state.teachers.map(teacher => `
+        <tr data-teacher-id="${teacher.id}" class="${excludedTeacherIds().has(teacher.id) ? 'excluded' : ''}">
+          <td>
+            <div class="name-cell">
+              <input class="name-input" type="text" data-action="rename" value="${escapeHtml(teacher.name)}" />
+              <div class="row-tools">
+                <label class="click-option"><input type="checkbox" data-action="exclude" ${excludedTeacherIds().has(teacher.id) ? 'checked' : ''} />不安排</label>
+                <label class="click-option"><input type="checkbox" data-action="toggle-all" ${state.slots.every(slot => teacher.availability?.[slot.id]) ? 'checked' : ''} />全选</label>
+              </div>
+            </div>
+          </td>
+          ${state.slots.map(slot => `
+            <td class="center check-cell">
+              <label class="cell-check" title="点击切换">
+                <input type="checkbox" data-action="toggle" data-slot-id="${slot.id}" ${teacher.availability?.[slot.id] ? 'checked' : ''} />
+              </label>
+            </td>
+          `).join('')}
+        </tr>
+      `).join('');
+      el.previewArea.innerHTML = `<table>${header}<tbody>${body}</tbody></table>`;
+    }
+
+    function renderSlotLimits() {
+      if (!state.slots.length) {
+        el.slotLimitArea.innerHTML = '<div class="empty">上传 Excel 后显示每个时间段的人数上限。</div>';
+        return;
+      }
+      el.slotLimitArea.innerHTML = state.slots.map(slot => `
+        <div class="slot-limit-row">
+          <div class="slot-limit-label">${escapeHtml(slot.label)}</div>
+          <input type="number" min="0" step="1" placeholder="默认" data-action="slot-limit" data-slot-id="${slot.id}" value="${state.slotLimits[slot.id] ?? ''}" />
+        </div>
+      `).join('');
+    }
+
+    function renderManualControls() {
+      const hasData = state.teachers.length > 0 && state.slots.length > 0;
+      el.manualTeacherSelect.innerHTML = hasData
+        ? state.teachers
+            .filter(t => t.name.trim() && !isRequiredLeaderName(t.name) && !excludedTeacherIds().has(t.id))
+            .map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`)
+            .join('')
+        : '<option value="">请先上传 Excel</option>';
+      el.manualSlotSelect.innerHTML = hasData
+        ? state.slots.map(slot => `<option value="${escapeHtml(slot.id)}">${escapeHtml(slot.label)}</option>`).join('')
+        : '<option value="">请先上传 Excel</option>';
+      el.addManualBtn.disabled = !hasData;
+
+      if (!state.fixedAssignments?.length) {
+        el.manualList.innerHTML = '<div class="hint">暂无指定安排。</div>';
+        return;
+      }
+
+      el.manualList.innerHTML = state.fixedAssignments.map((item, index) => {
+        const teacher = state.teachers.find(t => t.id === item.teacherId);
+        const slot = state.slots.find(s => s.id === item.slotId);
+        return `
+          <div class="manual-item">
+            <span>${escapeHtml(teacher?.name || item.teacherName || '未知老师')} → ${escapeHtml(slot?.label || item.slotLabel || '未知时间')}</span>
+            <button type="button" data-action="remove-manual" data-index="${index}">删除</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderNoAvailability() {
+      const list = state.teachers.filter(t => t.name.trim() && !excludedTeacherIds().has(t.id) && getAvailableSlots(t).length === 0);
+      if (!list.length) {
+        el.noAvailabilityArea.className = 'empty';
+        el.noAvailabilityArea.textContent = '暂无。';
+        return;
+      }
+      el.noAvailabilityArea.className = '';
+      el.noAvailabilityArea.innerHTML = `<ol class="list-plain">${list.map(t => `<li>${escapeHtml(t.name)}</li>`).join('')}</ol>`;
+    }
+
+    function renderUnscheduled() {
+      const list = state.schedule?.unscheduled || [];
+      if (!list.length) {
+        el.unscheduledArea.className = 'empty';
+        el.unscheduledArea.textContent = '暂无。';
+        return;
+      }
+      el.unscheduledArea.className = '';
+      el.unscheduledArea.innerHTML = `<ol class="list-plain">${list.map(item => `<li>${escapeHtml(item.name)}：${escapeHtml(item.reason)}</li>`).join('')}</ol>`;
+    }
+
+    function renderSchedule() {
+      if (!state.schedule) {
+        el.scheduleArea.className = 'empty';
+        el.scheduleArea.textContent = '还没有生成会议安排。';
+        el.exportBtn.disabled = true;
+        return;
+      }
+
+      const html = state.slots.map(slot => {
+        const names = state.schedule.assignments[slot.id] || [];
+        const limit = getLimit(slot.id);
+        const leaders = state.schedule.leaders?.[slot.id] || [];
+        const blocked = state.schedule.blockedSlots?.includes(slot.id);
+        return `
+          <div class="schedule-day">
+            <div class="schedule-day-title">
+              <span>${escapeHtml(slot.label)}</span>
+              <span class="hint">${blocked ? '负责人均未勾选，不能安排' : `${names.length}/${limit} 人`}</span>
+            </div>
+            ${leaders.length || names.length ? `
+              <ol class="schedule-list">
+                ${leaders.map(name => `<li>${escapeHtml(name)} <span class="hint">负责人，不计入人数</span></li>`).join('')}
+                ${names.map(name => {
+                  const isFixed = (state.fixedAssignments || []).some(item => {
+                    const teacher = state.teachers.find(t => t.id === item.teacherId);
+                    return item.slotId === slot.id && teacher?.name?.trim() === name;
+                  });
+                  return `<li>${escapeHtml(name)}${isFixed ? ' <span class="hint">指定</span>' : ''}</li>`;
+                }).join('')}
+              </ol>
+            ` : `<div class="empty" style="margin:7px;">${blocked ? '两位负责人都没有勾选这个时间，因此不能安排会议。' : '这一天没有安排老师。'}</div>`}
+          </div>
+        `;
+      }).join('');
+
+      const summary = `
+        <div class="success-box" style="margin-bottom:8px;">
+          已生成会议安排：成功安排 ${state.schedule.scheduledCount} 位老师；负责人每场自动加入且不计入人数；未填写时间 ${state.schedule.noAvailabilityCount} 人；未能安排 ${state.schedule.unscheduled.length} 人。
+        </div>
+      `;
+      el.scheduleArea.className = '';
+      el.scheduleArea.innerHTML = summary + html;
+      el.exportBtn.disabled = false;
+    }
+
+    function renderButtons() {
+      const hasData = state.teachers.length > 0 && state.slots.length > 0;
+      el.saveBtn.disabled = !hasData;
+      el.generateBtn.disabled = !hasData;
+      el.exportBtn.disabled = !state.schedule;
+      el.addTeacherBtn.disabled = state.slots.length === 0 || !cleanCell(el.newTeacherName.value);
+    }
+
+    function renderAll() {
+      el.globalLimit.value = state.globalLimit || 3;
+      renderStats();
+      renderPreview();
+      renderSlotLimits();
+      renderManualControls();
+      renderNoAvailability();
+      renderUnscheduled();
+      renderSchedule();
+      renderButtons();
+      if (!window.XLSX) {
+        el.libraryWarning.innerHTML = '<div class="warn-box">提示：当前没有加载到 Excel 读取库。请确认网络可访问 cdn.jsdelivr.net，或者将 xlsx.full.min.js 放到同一目录后修改引用。</div>';
+      } else {
+        el.libraryWarning.innerHTML = '';
+      }
+    }
+
+    function generateSchedule() {
+      state.globalLimit = Math.max(1, Math.floor(Number(el.globalLimit.value) || 1));
+      const requiredLeaders = getRequiredLeaders();
+      const missingLeaders = requiredLeaders.filter(item => !item.teacher).map(item => item.name);
+      const schedulableSlotIds = new Set(getSchedulableSlots().map(slot => slot.id));
+      const blockedSlots = state.slots.filter(slot => !schedulableSlotIds.has(slot.id)).map(slot => slot.id);
+      const fixedIds = fixedTeacherIds();
+      const excludedIds = excludedTeacherIds();
+      const assignments = Object.fromEntries(state.slots.map(slot => [slot.id, []]));
+      const fixedUnscheduled = [];
+      const fixedAssignedTeacherIds = new Set();
+
+      (state.fixedAssignments || []).forEach(item => {
+        const teacher = state.teachers.find(t => t.id === item.teacherId);
+        const slot = state.slots.find(s => s.id === item.slotId);
+        if (!teacher || !slot) {
+          fixedUnscheduled.push({ name: item.teacherName || '未知老师', reason: '指定安排中的老师或时间不存在' });
+          return;
+        }
+        if (excludedIds.has(teacher.id)) return;
+        if (fixedAssignedTeacherIds.has(teacher.id)) {
+          fixedUnscheduled.push({ name: teacher.name.trim(), reason: '同一老师被指定了多个时间，只能安排一次' });
+          return;
+        }
+        if (!teacher.availability?.[slot.id]) {
+          fixedUnscheduled.push({ name: teacher.name.trim(), reason: '指定时间未勾选可开会' });
+          return;
+        }
+        if (!schedulableSlotIds.has(slot.id)) {
+          fixedUnscheduled.push({ name: teacher.name.trim(), reason: '指定时间没有负责人勾选，无法安排会议' });
+          return;
+        }
+        const limit = getLimit(slot.id);
+        if (assignments[slot.id].length >= limit) {
+          fixedUnscheduled.push({ name: teacher.name.trim(), reason: '指定时间人数上限已满' });
+          return;
+        }
+        assignments[slot.id].push(teacher.name.trim());
+        fixedAssignedTeacherIds.add(teacher.id);
+      });
+
+      const eligible = state.teachers
+        .map((teacher, index) => ({ teacher, index, slots: getAvailableSlots(teacher) }))
+        .filter(item => item.teacher.name.trim() && !isRequiredLeaderName(item.teacher.name))
+        .filter(item => !excludedIds.has(item.teacher.id))
+        .filter(item => !fixedIds.has(item.teacher.id))
+        .map(item => ({ ...item, slots: item.slots.filter(slot => schedulableSlotIds.has(slot.id)) }))
+        .filter(item => item.slots.length > 0);
+
+      const noAvailability = state.teachers.filter(t => t.name.trim() && !isRequiredLeaderName(t.name) && !excludedIds.has(t.id) && !fixedIds.has(t.id) && getAvailableSlots(t).length === 0);
+      const blockedByLeaders = state.teachers
+        .filter(t => t.name.trim() && !isRequiredLeaderName(t.name) && !excludedIds.has(t.id) && !fixedIds.has(t.id) && getAvailableSlots(t).length > 0)
+        .filter(t => getAvailableSlots(t).every(slot => !schedulableSlotIds.has(slot.id)));
+      const seats = [];
+      state.slots.forEach(slot => {
+        if (!schedulableSlotIds.has(slot.id)) return;
+        const limit = getLimit(slot.id);
+        const availableSeats = Math.max(0, limit - assignments[slot.id].length);
+        for (let i = 0; i < availableSeats; i++) seats.push({ slotId: slot.id, seatNo: i });
+      });
+
+      const slotOrder = new Map(state.slots.map((slot, idx) => [slot.id, idx]));
+      const teacherOrder = eligible
+        .slice()
+        .sort((a, b) => a.slots.length - b.slots.length || a.index - b.index);
+      const teacherByIndex = new Map(eligible.map(item => [item.index, item]));
+      const edges = new Map();
+      eligible.forEach(item => {
+        const availableSlotIds = new Set(item.slots.map(slot => slot.id));
+        const edgeSeats = seats
+          .map((seat, seatIndex) => ({ seat, seatIndex }))
+          .filter(x => availableSlotIds.has(x.seat.slotId))
+          .sort((a, b) => slotOrder.get(a.seat.slotId) - slotOrder.get(b.seat.slotId) || a.seatNo - b.seatNo)
+          .map(x => x.seatIndex);
+        edges.set(item.index, edgeSeats);
+      });
+
+      const matchSeatToTeacher = new Array(seats.length).fill(null);
+      function tryAssign(teacherIndex, seen) {
+        const edgeSeats = edges.get(teacherIndex) || [];
+        for (const seatIndex of edgeSeats) {
+          if (seen[seatIndex]) continue;
+          seen[seatIndex] = true;
+          if (matchSeatToTeacher[seatIndex] === null || tryAssign(matchSeatToTeacher[seatIndex], seen)) {
+            matchSeatToTeacher[seatIndex] = teacherIndex;
+            return true;
+          }
+        }
+        return false;
+      }
+
+      teacherOrder.forEach(item => {
+        tryAssign(item.index, new Array(seats.length).fill(false));
+      });
+
+      const leaders = Object.fromEntries(state.slots.map(slot => [
+        slot.id,
+        schedulableSlotIds.has(slot.id) ? availableLeaderNamesForSlot(slot.id) : []
+      ]));
+      const assignedTeacherIndexes = new Set();
+      matchSeatToTeacher.forEach((teacherIndex, seatIndex) => {
+        if (teacherIndex === null) return;
+        const item = teacherByIndex.get(teacherIndex);
+        if (!item) return;
+        const slotId = seats[seatIndex].slotId;
+        assignments[slotId].push(item.teacher.name.trim());
+        assignedTeacherIndexes.add(teacherIndex);
+      });
+
+      state.slots.forEach(slot => {
+        assignments[slot.id].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+      });
+
+      const unscheduled = eligible
+        .filter(item => !assignedTeacherIndexes.has(item.index))
+        .map(item => ({ name: item.teacher.name.trim(), reason: '可选日期已满' }));
+      fixedUnscheduled.forEach(item => unscheduled.push(item));
+      blockedByLeaders.forEach(teacher => {
+        unscheduled.push({ name: teacher.name.trim(), reason: '两位负责人均未勾选该老师可选时间，无法安排会议' });
+      });
+      missingLeaders.forEach(name => {
+        unscheduled.push({ name, reason: '负责人不在表格中，无法确认可开会时间' });
+      });
+
+      state.schedule = {
+        assignments,
+        leaders,
+        blockedSlots,
+        unscheduled,
+        noAvailability: noAvailability.map(t => t.name.trim()),
+        scheduledCount: assignedTeacherIndexes.size + fixedAssignedTeacherIds.size,
+        noAvailabilityCount: noAvailability.length,
+        generatedAt: new Date().toLocaleString()
+      };
+      saveToLocal(false);
+      renderAll();
+      el.generateStatus.innerHTML = `<span class="pill ok">已自动排完：${state.schedule.generatedAt}</span>`;
+    }
+
+    function splitSlotLabel(label) {
+      const s = cleanCell(label);
+      const match = s.match(/(\d{1,2}\s*[:：.]\s*\d{2}.*)$/);
+      if (match) {
+        return { date: cleanCell(s.slice(0, match.index)), time: cleanCell(match[1]) };
+      }
+      return { date: s, time: '' };
+    }
+
+    function exportExcel() {
+      if (!state.schedule || !window.XLSX) return;
+      const wb = XLSX.utils.book_new();
+      const rows = [['日期时间', '日期', '时间段', '序号', '老师姓名', '备注']];
+      state.slots.forEach(slot => {
+        const names = state.schedule.assignments[slot.id] || [];
+        const leaders = state.schedule.leaders?.[slot.id] || [];
+        const parts = splitSlotLabel(slot.label);
+        leaders.forEach(name => {
+          rows.push([slot.label, parts.date, parts.time, '', name, '负责人，不计入人数']);
+        });
+        names.forEach((name, index) => {
+          const isFixed = (state.fixedAssignments || []).some(item => {
+            const teacher = state.teachers.find(t => t.id === item.teacherId);
+            return item.slotId === slot.id && teacher?.name?.trim() === name;
+          });
+          rows.push([slot.label, parts.date, parts.time, index + 1, name, isFixed ? '指定安排' : '']);
+        });
+      });
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, '会议安排');
+
+      const issueRows = [['类型', '老师姓名', '原因']];
+      (state.schedule.noAvailability || []).forEach(name => issueRows.push(['未填写可开会时间', name, '没有填写可开会时间']));
+      (state.schedule.unscheduled || []).forEach(item => issueRows.push(['未能安排', item.name, item.reason]));
+      (state.excludedTeacherIds || []).forEach(id => {
+        const teacher = state.teachers.find(t => t.id === id);
+        if (teacher?.name?.trim()) issueRows.push(['不安排会议', teacher.name.trim(), '用户选择不安排']);
+      });
+      const ws2 = XLSX.utils.aoa_to_sheet(issueRows);
+      XLSX.utils.book_append_sheet(wb, ws2, '未填写和未安排');
+
+      const originalRows = [['老师姓名', ...state.slots.map(s => s.label)]];
+      state.teachers.forEach(t => {
+        originalRows.push([t.name, ...state.slots.map(s => t.availability?.[s.id] ? '可开会' : '')]);
+      });
+      const ws3 = XLSX.utils.aoa_to_sheet(originalRows);
+      XLSX.utils.book_append_sheet(wb, ws3, '识别数据');
+
+      XLSX.writeFile(wb, '会议安排结果.xlsx');
+    }
+
+    function saveToLocal(showMessage = true) {
+      const data = {
+        fileName: state.fileName,
+        teachers: state.teachers,
+        slots: state.slots,
+        globalLimit: state.globalLimit,
+        slotLimits: state.slotLimits,
+        fixedAssignments: state.fixedAssignments,
+        excludedTeacherIds: state.excludedTeacherIds,
+        schedule: state.schedule,
+        lastDetection: state.lastDetection
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (showMessage) {
+        el.loadStatus.innerHTML = '<span class="pill ok">已保存到本地浏览器。刷新页面后仍可继续使用。</span>';
+      }
+    }
+
+    function loadFromLocal() {
+      const text = localStorage.getItem(STORAGE_KEY);
+      if (!text) return;
+      try {
+        const data = JSON.parse(text);
+        state.fileName = data.fileName || '';
+        state.teachers = data.teachers || [];
+        state.slots = data.slots || [];
+        state.globalLimit = data.globalLimit || 3;
+        state.slotLimits = data.slotLimits || {};
+        state.fixedAssignments = data.fixedAssignments || [];
+        state.excludedTeacherIds = data.excludedTeacherIds || [];
+        state.schedule = data.schedule || null;
+        state.lastDetection = data.lastDetection || null;
+        if (state.teachers.length) {
+          el.loadStatus.innerHTML = `<span class="pill ok">已恢复本地保存的数据${state.fileName ? '：' + escapeHtml(state.fileName) : ''}</span>`;
+        }
+      } catch (error) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+
+    function clearData() {
+      if (!confirm('确定要清空当前数据吗？')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      state.fileName = '';
+      state.teachers = [];
+      state.slots = [];
+      state.globalLimit = 3;
+      state.slotLimits = {};
+      state.fixedAssignments = [];
+      state.excludedTeacherIds = [];
+      state.schedule = null;
+      state.lastDetection = null;
+      el.loadStatus.innerHTML = '<span class="pill warn">数据已清空。</span>';
+      el.generateStatus.innerHTML = '';
+      renderAll();
+    }
+
+    el.fileInput.addEventListener('change', handleFileUpload);
+    el.newTeacherName.addEventListener('input', renderButtons);
+    el.newTeacherName.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !el.addTeacherBtn.disabled) el.addTeacherBtn.click();
+    });
+    el.addTeacherBtn.addEventListener('click', () => {
+      const name = cleanCell(el.newTeacherName.value);
+      if (!name) return;
+      if (!state.slots.length) {
+        alert('请先上传 Excel，识别出时间段后再添加老师。');
+        return;
+      }
+      if (state.teachers.some(t => cleanCell(t.name) === name)) {
+        alert('这个老师已经在表格中。');
+        return;
+      }
+      const availability = Object.fromEntries(state.slots.map(slot => [slot.id, false]));
+      state.teachers.push({
+        id: `teacher-${Date.now()}-manual-${Math.random().toString(16).slice(2)}`,
+        name,
+        availability
+      });
+      el.newTeacherName.value = '';
+      state.schedule = null;
+      saveToLocal(false);
+      renderAll();
+    });
+    el.saveBtn.addEventListener('click', () => saveToLocal(true));
+    el.clearBtn.addEventListener('click', clearData);
+    el.generateBtn.addEventListener('click', generateSchedule);
+    el.exportBtn.addEventListener('click', exportExcel);
+
+    el.globalLimit.addEventListener('input', () => {
+      state.globalLimit = Math.max(1, Math.floor(Number(el.globalLimit.value) || 1));
+      state.schedule = null;
+      saveToLocal(false);
+      renderStats();
+      renderSchedule();
+      renderButtons();
+    });
+
+    el.addManualBtn.addEventListener('click', () => {
+      const teacherId = el.manualTeacherSelect.value;
+      const slotId = el.manualSlotSelect.value;
+      const teacher = state.teachers.find(t => t.id === teacherId);
+      const slot = state.slots.find(s => s.id === slotId);
+      if (!teacher || !slot) return;
+      if (isRequiredLeaderName(teacher.name)) {
+        alert('负责人会自动加入会议，不需要手动指定。');
+        return;
+      }
+      if (!teacher.availability?.[slot.id]) {
+        alert('这个老师没有勾选该时间，不能指定到这个时间。');
+        return;
+      }
+      if (state.fixedAssignments.some(item => item.teacherId === teacherId)) {
+        alert('这个老师已经有指定安排。每位老师只能安排一次。');
+        return;
+      }
+      state.fixedAssignments.push({
+        teacherId,
+        teacherName: teacher.name.trim(),
+        slotId,
+        slotLabel: slot.label
+      });
+      state.schedule = null;
+      saveToLocal(false);
+      renderAll();
+    });
+
+    el.manualList.addEventListener('click', event => {
+      const target = event.target;
+      if (target.dataset.action !== 'remove-manual') return;
+      state.fixedAssignments.splice(Number(target.dataset.index), 1);
+      state.schedule = null;
+      saveToLocal(false);
+      renderAll();
+    });
+
+    el.previewArea.addEventListener('input', event => {
+      const target = event.target;
+      const row = target.closest('tr[data-teacher-id]');
+      if (!row) return;
+      const teacher = state.teachers.find(t => t.id === row.dataset.teacherId);
+      if (!teacher) return;
+      if (target.dataset.action === 'rename') {
+        teacher.name = target.value;
+        state.fixedAssignments.forEach(item => {
+          if (item.teacherId === teacher.id) item.teacherName = teacher.name.trim();
+        });
+        state.schedule = null;
+        saveToLocal(false);
+        renderStats();
+        renderManualControls();
+        renderNoAvailability();
+        renderSchedule();
+      }
+    });
+
+    el.previewArea.addEventListener('change', event => {
+      const target = event.target;
+      const row = target.closest('tr[data-teacher-id]');
+      if (!row) return;
+      const teacher = state.teachers.find(t => t.id === row.dataset.teacherId);
+      if (!teacher) return;
+      if (target.dataset.action === 'exclude') {
+        const excluded = new Set(state.excludedTeacherIds || []);
+        if (target.checked) {
+          excluded.add(teacher.id);
+          state.fixedAssignments = state.fixedAssignments.filter(item => item.teacherId !== teacher.id);
+        } else {
+          excluded.delete(teacher.id);
+        }
+        state.excludedTeacherIds = [...excluded];
+        state.schedule = null;
+        saveToLocal(false);
+        renderAll();
+        return;
+      }
+      if (target.dataset.action === 'toggle-all') {
+        state.slots.forEach(slot => {
+          teacher.availability[slot.id] = target.checked;
+        });
+        if (!target.checked) {
+          state.fixedAssignments = state.fixedAssignments.filter(item => item.teacherId !== teacher.id);
+        }
+        state.schedule = null;
+        saveToLocal(false);
+        renderAll();
+        return;
+      }
+      if (target.dataset.action === 'toggle') {
+        teacher.availability[target.dataset.slotId] = target.checked;
+        state.fixedAssignments = state.fixedAssignments.filter(item => {
+          const fixedTeacher = state.teachers.find(t => t.id === item.teacherId);
+          return fixedTeacher?.availability?.[item.slotId];
+        });
+        state.schedule = null;
+        saveToLocal(false);
+        renderAll();
+      }
+    });
+
+    el.slotLimitArea.addEventListener('input', event => {
+      const target = event.target;
+      if (target.dataset.action !== 'slot-limit') return;
+      const slotId = target.dataset.slotId;
+      state.slotLimits[slotId] = target.value === '' ? '' : Math.max(0, Math.floor(Number(target.value) || 0));
+      state.schedule = null;
+      saveToLocal(false);
+      renderSchedule();
+      renderButtons();
+    });
+
+    loadFromLocal();
+    renderAll();
+  </script>
+</body>
+</html>
