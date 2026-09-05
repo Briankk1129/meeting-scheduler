@@ -2,7 +2,7 @@ import {$,$$,escapeHtml as h,busy,notify,statusText} from './utils.js';
 import {requireAdmin} from './auth.js';
 import {requireConfig} from './supabase.js';
 import {snapshot,command} from './api/admin-api.js';
-const views=[['dashboard','管理首页'],['teachers','班主任管理'],['periods','月份与会议时间'],['submissions','填写情况'],['leaders','负责人管理'],['scheduler','自动排期'],['calendar','会议日历'],['export','数据导出'],['settings','系统设置']];
+const views=[['dashboard','管理首页'],['teachers','班主任管理'],['periods','会议日期与时间'],['submissions','填写情况'],['leaders','负责人管理'],['scheduler','自动排期'],['calendar','会议日历'],['export','数据导出'],['settings','系统设置']];
 const cloudRevisions=new Map();
 let data,periodId=localStorage.getItem('meeting-period-preference')||'',user,renderTicket=0,channel;
 const current=()=>data?.periods.find(p=>p.id===periodId);
