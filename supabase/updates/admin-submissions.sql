@@ -1,27 +1,4 @@
-create function meeting_private.is_admin() returns boolean language sql stable security definer set search_path='' as $$
- select auth.uid() is not null and exists(select 1 from public.profiles where id=auth.uid() and role='admin');
-$$;
-create function public.admin_snapshot(p_period uuid default null) returns jsonb language plpgsql stable security invoker set search_path='' as $$
-begin
- if not meeting_private.is_admin() then raise exception '需要管理员权限' using errcode='42501'; end if;
- return jsonb_build_object(
- 'periods',coalesce((select jsonb_agg(x order by year desc,month desc) from public.meeting_periods x),'[]'),
- 'teachers',coalesce((select jsonb_agg(x order by created_at,id) from public.teachers x),'[]'),
- 'leaders',coalesce((select jsonb_agg(x order by created_at,id) from public.leaders x),'[]'),
- 'members',coalesce((select jsonb_agg(x order by sort_order,id) from public.period_teacher_status x where period_id=p_period),'[]'),
- 'slots',coalesce((select jsonb_agg(x order by sort_order,id) from public.meeting_slots x where period_id=p_period),'[]'),
- 'permissions',coalesce((select jsonb_agg(x) from public.teacher_slot_permissions x where period_id=p_period),'[]'),
- 'availability',coalesce((select jsonb_agg(x) from public.teacher_availability x where period_id=p_period),'[]'),
- 'periodLeaders',coalesce((select jsonb_agg(x) from public.period_leaders x where period_id=p_period),'[]'),
- 'leaderAvailability',coalesce((select jsonb_agg(x) from public.leader_availability x where period_id=p_period),'[]'),
- 'fixed',coalesce((select jsonb_agg(x order by sort_order,id) from public.fixed_assignments x where period_id=p_period),'[]'),
- 'runs',coalesce((select jsonb_agg(x) from public.schedule_runs x where period_id=p_period and is_current),'[]'),
- 'assignments',coalesce((select jsonb_agg(x) from public.meeting_assignments x where period_id=p_period and run_id in(select id from public.schedule_runs where period_id=p_period and is_current)),'[]'),
- 'assignmentLeaders',coalesce((select jsonb_agg(x) from public.meeting_assignment_leaders x where period_id=p_period and run_id in(select id from public.schedule_runs where period_id=p_period and is_current)),'[]')
- );
-end $$;
-
-create function meeting_private.admin_command(p_action text,p_data jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
+create or replace function meeting_private.admin_command(p_action text,p_data jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
 declare
  pid uuid := nullif(p_data->>'period_id','')::uuid; tid uuid; sid uuid; lid uuid; rid uuid; slot_ids uuid[]; idx integer; rec jsonb; raw_token text;
  period public.meeting_periods; result jsonb := '{}'::jsonb; global_action boolean;
@@ -225,39 +202,4 @@ begin
  if global_action then update public.meeting_periods set revision=revision+1 where id is not null;
  elsif p_action<>'period_create' then update public.meeting_periods set revision=revision+1 where id=pid; end if;
  return result;
-end $$;
-create function public.admin_command(p_action text,p_data jsonb) returns jsonb language sql security invoker set search_path='' as $$
- select meeting_private.admin_command(p_action,p_data);
-$$;
-
--- Only service_role can execute this function; the Edge Function supplies the token.
--- It is SECURITY INVOKER: no anonymous privileged database function is exposed.
-create function public.teacher_portal(p_token text,p_slots uuid[] default null,p_revision integer default null) returns jsonb
-language plpgsql security invoker set search_path='' as $$
-declare tok meeting_private.teacher_access_tokens; per public.meeting_periods; member public.period_teacher_status;
-begin
- if current_user<>'service_role' then raise exception '拒绝访问' using errcode='42501'; end if;
- if p_token is null or p_token !~ '^[0-9a-f]{64}$' then raise exception '链接无效或已过期'; end if;
- select * into tok from meeting_private.teacher_access_tokens where token_hash=encode(extensions.digest(p_token,'sha256'),'hex');
- if not found then raise exception '链接无效或已过期'; end if;
- select * into per from public.meeting_periods where id=tok.period_id for update;
- -- Re-read after the lock so link revocation cannot race submission.
- select * into tok from meeting_private.teacher_access_tokens where id=tok.id and revoked_at is null and expires_at>now();
- if not found or per.status='draft' then raise exception '链接无效或尚未开放'; end if;
- select * into member from public.period_teacher_status where period_id=tok.period_id and teacher_id=tok.teacher_id;
- if not exists(select 1 from public.teachers where id=tok.teacher_id and active) then raise exception '该老师已停用'; end if;
- if p_slots is not null then
-  if per.status<>'collecting' or member.excluded then raise exception '当前已停止填写'; end if;
-  if p_revision is distinct from member.submission_revision then raise exception '填写内容或可选时间已变化，请刷新后重试' using errcode='40001'; end if;
-  if cardinality(p_slots)>1000 or exists(select 1 from unnest(p_slots) s where s is null or not exists(select 1 from public.teacher_slot_permissions where period_id=tok.period_id and teacher_id=tok.teacher_id and slot_id=s)) then raise exception '包含未开放的时间'; end if;
-  delete from public.fixed_assignments where period_id=tok.period_id and teacher_id=tok.teacher_id and not(slot_id=any(p_slots));
-  delete from public.teacher_availability where period_id=tok.period_id and teacher_id=tok.teacher_id;
-  insert into public.teacher_availability(period_id,teacher_id,slot_id) select tok.period_id,tok.teacher_id,s from (select distinct unnest(p_slots) s) x;
-  update public.period_teacher_status set first_submitted_at=coalesce(first_submitted_at,now()),last_submitted_at=now(),submission_source='online',submission_revision=submission_revision+1 where id=member.id returning * into member;
-  update public.meeting_periods set revision=revision+1 where id=per.id;
- end if;
- return jsonb_build_object('name',member.name_snapshot,'class_name',member.class_snapshot,'title',per.title,'timezone',per.timezone,
-  'status',per.status,'excluded',member.excluded,'revision',member.submission_revision,'first_submitted_at',member.first_submitted_at,'last_submitted_at',member.last_submitted_at,
-  'slots',coalesce((select jsonb_agg(jsonb_build_object('id',s.id,'meeting_date',s.meeting_date,'start_time',s.start_time,'end_time',s.end_time) order by s.meeting_date,s.start_time) from public.meeting_slots s join public.teacher_slot_permissions a on a.slot_id=s.id and a.period_id=s.period_id where a.period_id=per.id and a.teacher_id=tok.teacher_id),'[]'),
-  'selected',coalesce((select jsonb_agg(slot_id) from public.teacher_availability where period_id=per.id and teacher_id=tok.teacher_id),'[]'));
 end $$;

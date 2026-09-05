@@ -201,6 +201,24 @@ begin
   insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order)
   select pid,id,name,class_name,(select coalesce(max(sort_order),0) from public.period_teacher_status where period_id=pid)+row_number() over(order by created_at,id)
   from public.teachers where active and id in(select value::uuid from jsonb_array_elements_text(p_data->'teacher_ids')) on conflict do nothing;
+ when 'submission_update', 'submission_delete' then
+  tid=(p_data->>'teacher_id')::uuid;
+  if not exists(select 1 from public.period_teacher_status where period_id=pid and teacher_id=tid) then raise exception '老师不在本月名单'; end if;
+  if (p_data->>'submission_revision')::integer is distinct from (select submission_revision from public.period_teacher_status where period_id=pid and teacher_id=tid) then raise exception '填写内容已变化，请刷新后重试' using errcode='40001'; end if;
+  if p_action='submission_delete' then
+   delete from public.teacher_availability where period_id=pid and teacher_id=tid;
+   delete from public.fixed_assignments where period_id=pid and teacher_id=tid;
+   update public.period_teacher_status set first_submitted_at=null,last_submitted_at=null,submission_source=null,submission_revision=submission_revision+1 where period_id=pid and teacher_id=tid;
+  else
+   if jsonb_typeof(p_data->'slot_ids') is distinct from 'array' then raise exception '请选择可参加时间'; end if;
+   if jsonb_array_length(p_data->'slot_ids')>1000 then raise exception '时间段过多'; end if;
+   if exists(select 1 from jsonb_array_elements_text(p_data->'slot_ids') x where x.value is null or not exists(select 1 from public.meeting_slots where period_id=pid and id=x.value::uuid)) then raise exception '包含其他月份或无效的时间'; end if;
+   select coalesce(array_agg(distinct value::uuid),'{}'::uuid[]) into slot_ids from jsonb_array_elements_text(p_data->'slot_ids');
+   delete from public.fixed_assignments where period_id=pid and teacher_id=tid and not(slot_id=any(slot_ids));
+   delete from public.teacher_availability where period_id=pid and teacher_id=tid;
+   insert into public.teacher_availability(period_id,teacher_id,slot_id) select pid,tid,unnest(slot_ids);
+   update public.period_teacher_status set first_submitted_at=coalesce(first_submitted_at,now()),last_submitted_at=now(),submission_source=coalesce(submission_source,'online'),submission_revision=submission_revision+1 where period_id=pid and teacher_id=tid;
+  end if;
  when 'member_set' then
   tid=(p_data->>'teacher_id')::uuid;
   update public.period_teacher_status set excluded=(p_data->>'excluded')::boolean where period_id=pid and teacher_id=tid;
