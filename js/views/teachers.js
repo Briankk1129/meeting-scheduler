@@ -14,7 +14,7 @@ export function render(ctx) {
  bindActions(async(action,id)=>{
  const t=d.teachers.find(t=>t.id===id);
  if(action==='edit')return fillForm('#teacher-form',t);
- if(action==='delete'&&confirm(`删除 ${t.name}？有历史记录时将拒绝删除，请改为停用。`))return ctx.mutate('teacher_delete',{id});
+ if(action==='delete'&&confirm(`永久删除 ${t.name}？这会删除该老师在所有月份的填写、固定安排和历史排期，无法恢复。若同时是负责人，只解除关联并保留负责人档案。`))return ctx.mutate('teacher_delete',{id});
  if(action==='add-all')return ctx.mutate('member_add',{teacher_ids:d.teachers.filter(t=>t.active).map(t=>t.id)});
 
  });

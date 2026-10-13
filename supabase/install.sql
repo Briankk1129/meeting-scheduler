@@ -193,9 +193,11 @@ begin
   end loop;
  when 'teacher_delete' then
   tid=(p_data->>'id')::uuid;
-  if exists(select 1 from public.meeting_assignments where teacher_id=tid) then raise exception '老师已有历史排期，请使用停用'; end if;
+  if not exists(select 1 from public.teachers where id=tid) then raise exception '老师不存在'; end if;
+  update public.leaders set teacher_id=null where teacher_id=tid;
+  delete from public.meeting_assignments where teacher_id=tid;
   delete from public.period_teacher_status where teacher_id=tid;
-  delete from public.teachers where id=tid; -- Linked leader identities still use RESTRICT.
+  delete from public.teachers where id=tid;
 
  when 'member_add' then
   insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order)
