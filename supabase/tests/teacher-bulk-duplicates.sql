@@ -15,6 +15,8 @@ do $$ declare result jsonb; begin
  ));
  assert result->>'added'='1','added count mismatch';
  assert result->>'skipped'='2','skipped count mismatch';
+ assert result->'added_names'='["新老师"]'::jsonb,'added names mismatch';
+ assert result->'skipped_names'='["已有老师","新老师"]'::jsonb,'skipped names mismatch';
 end $$;
 reset role;
 

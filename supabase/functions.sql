@@ -61,21 +61,23 @@ begin
   update public.period_teacher_status m set name_snapshot=t.name,class_snapshot=t.class_name from public.teachers t where t.id=tid and m.teacher_id=tid and not exists(select 1 from public.schedule_runs r where r.period_id=m.period_id);
   result=jsonb_build_object('id',tid);
  when 'teacher_bulk' then
-  declare added integer:=0; skipped integer:=0; teacher_name text;
+  declare added integer:=0; skipped integer:=0; teacher_name text; added_names jsonb:='[]'::jsonb; skipped_names jsonb:='[]'::jsonb;
   begin
    if jsonb_array_length(p_data->'teachers')>500 then raise exception '每次最多导入500位'; end if;
    for rec in select value from jsonb_array_elements(p_data->'teachers') loop
     teacher_name=trim(rec->>'name');
     if teacher_name='' or exists(select 1 from public.teachers where name=teacher_name) then
      skipped=skipped+1;
+     skipped_names=skipped_names||jsonb_build_array(teacher_name);
      continue;
     end if;
     insert into public.teachers(name,class_name) values(teacher_name,coalesce(rec->>'class_name','')) returning id into tid;
     added=added+1;
+    added_names=added_names||jsonb_build_array(teacher_name);
     if pid is not null then insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order)
      values(pid,tid,teacher_name,coalesce(rec->>'class_name',''),(select coalesce(max(sort_order),0)+1 from public.period_teacher_status where period_id=pid)); end if;
    end loop;
-   result=jsonb_build_object('added',added,'skipped',skipped);
+   result=jsonb_build_object('added',added,'skipped',skipped,'added_names',added_names,'skipped_names',skipped_names);
   end;
  when 'teacher_delete' then
   tid=(p_data->>'id')::uuid;

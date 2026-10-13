@@ -2,6 +2,11 @@ import {card,h,table,input,select,button,bindForm,bindActions,fillForm,dialog} f
 import {$,busy,notify} from '../utils.js';
 import {parseImport} from '../excel/import.js';
 let preview=null;
+function showBulkResult(result){
+ const added=result.added_names||[],skipped=result.skipped_names||[];
+ dialog(`<h2>批量添加完成</h2><p><strong>成功添加 ${result.added||0} 位</strong></p><p>${added.length?added.map(h).join('、'):'没有新增班主任'}</p><p><strong>重复跳过 ${result.skipped||0} 位</strong></p><p>${skipped.length?skipped.map(h).join('、'):'没有重复姓名'}</p><button id="bulk-result-close" type="button">知道了</button>`);
+ $('#bulk-result-close').onclick=()=>$('#details').close();
+}
 export function render(ctx) {
  const {root,data:d,period:p}=ctx;
  const url=new URL('../',location.href).href;
@@ -10,7 +15,7 @@ export function render(ctx) {
  card('班主任名单',`<div class="toolbar">${p?button('add-all','',`将所有启用老师加入${p.month}月`):'<span class="muted">请先创建排期月份。</span>'}</div>`+table(['姓名','班级','全局状态','当前月份','填写','操作'],d.teachers.map(t=>{const m=d.members.find(x=>x.teacher_id===t.id);return[h(t.name),h(t.class_name),t.active?'启用':'停用',m?(m.excluded?'本月不安排':'已加入'):'未加入',m?.first_submitted_at?'<span class="badge ok">已填写</span>':'未填写',button('edit',t.id,'编辑')+button('delete',t.id,'删除','danger')];})));
  $('#copy-link').onclick=()=>busy($('#copy-link'),async()=>{await navigator.clipboard.writeText(url);notify('统一填写链接已复制');});
  bindForm('#teacher-form',f=>ctx.mutate('teacher_save',{...f,active:f.active==='true'}));
- bindForm('#bulk-form',async f=>{const teachers=f.text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>{const [name,...rest]=s.split(/[,，\t]/);return{name:name.trim(),class_name:rest.join(' ').trim()};});if(!teachers.length)return;if(!confirm(`处理 ${teachers.length} 行班主任名单？同名老师会自动跳过。`))return;const result=await ctx.mutate('teacher_bulk',{teachers});notify(`已添加 ${result.added} 位，跳过 ${result.skipped} 位同名老师。`);});
+ bindForm('#bulk-form',async f=>{const teachers=f.text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>{const [name,...rest]=s.split(/[,，\t]/);return{name:name.trim(),class_name:rest.join(' ').trim()};});if(!teachers.length)return;if(!confirm(`处理 ${teachers.length} 行班主任名单？同名老师会自动跳过。`))return;showBulkResult(await ctx.mutate('teacher_bulk',{teachers}));});
  bindActions(async(action,id)=>{
  const t=d.teachers.find(t=>t.id===id);
  if(action==='edit')return fillForm('#teacher-form',t);
@@ -24,8 +29,8 @@ export function render(ctx) {
  dialog(`<h2>导入预览</h2><p>${preview.teachers.length} 位老师，${preview.slots.length} 个时间段。</p>${table(['姓名','班级'],preview.teachers.slice(0,12).map(t=>[h(t.name),h(t.class_name)]))}<p class="footer-note">仅显示前12行。同名老师会自动跳过。</p>${preview.slots.length&&p?'<label class="check-row"><input id="import-availability" type="checkbox">同时迁移原表可用时间到当前月份</label><p class="footer-note">非空即有空（包括“否”）。未写年份使用当前月份年份；其他月份日期会拒绝导入。表中的负责人需先在负责人管理中创建同名档案。</p>':''}<button id="confirm-import">确认导入</button>`);
  $('#confirm-import').onclick=()=>busy($('#confirm-import'),async()=>{
  if($('#import-availability')?.checked){const {parseSlotLabel}=await import('../excel/import.js');await ctx.mutate('legacy_import',{...preview,slots:preview.slots.map(s=>parseSlotLabel(s,p.year))});}
- else {const result=await ctx.mutate('teacher_bulk',{teachers:preview.teachers});notify(`已添加 ${result.added} 位，跳过 ${result.skipped} 位同名老师。`);}
- $('#details').close();
+ else {const result=await ctx.mutate('teacher_bulk',{teachers:preview.teachers});showBulkResult(result);return;}
+ $('#details').close();notify('导入完成');
  });
  });
 }
