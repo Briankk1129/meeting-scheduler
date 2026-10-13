@@ -61,12 +61,22 @@ begin
   update public.period_teacher_status m set name_snapshot=t.name,class_snapshot=t.class_name from public.teachers t where t.id=tid and m.teacher_id=tid and not exists(select 1 from public.schedule_runs r where r.period_id=m.period_id);
   result=jsonb_build_object('id',tid);
  when 'teacher_bulk' then
-  if jsonb_array_length(p_data->'teachers')>500 then raise exception '每次最多导入500位'; end if;
-  for rec in select value from jsonb_array_elements(p_data->'teachers') loop
-   insert into public.teachers(name,class_name) values(trim(rec->>'name'),coalesce(rec->>'class_name','')) returning id into tid;
-   if pid is not null then insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order)
-    values(pid,tid,trim(rec->>'name'),coalesce(rec->>'class_name',''),(select coalesce(max(sort_order),0)+1 from public.period_teacher_status where period_id=pid)); end if;
-  end loop;
+  declare added integer:=0; skipped integer:=0; teacher_name text;
+  begin
+   if jsonb_array_length(p_data->'teachers')>500 then raise exception '每次最多导入500位'; end if;
+   for rec in select value from jsonb_array_elements(p_data->'teachers') loop
+    teacher_name=trim(rec->>'name');
+    if teacher_name='' or exists(select 1 from public.teachers where name=teacher_name) then
+     skipped=skipped+1;
+     continue;
+    end if;
+    insert into public.teachers(name,class_name) values(teacher_name,coalesce(rec->>'class_name','')) returning id into tid;
+    added=added+1;
+    if pid is not null then insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order)
+     values(pid,tid,teacher_name,coalesce(rec->>'class_name',''),(select coalesce(max(sort_order),0)+1 from public.period_teacher_status where period_id=pid)); end if;
+   end loop;
+   result=jsonb_build_object('added',added,'skipped',skipped);
+  end;
  when 'teacher_delete' then
   tid=(p_data->>'id')::uuid;
   if not exists(select 1 from public.teachers where id=tid) then raise exception '老师不存在'; end if;
@@ -183,15 +193,17 @@ begin
    if found then
     insert into public.period_leaders(period_id,leader_id,name_snapshot) values(pid,lid,trim(rec->>'name')) on conflict do nothing;
     delete from public.leader_availability where period_id=pid and leader_id=lid;
-    insert into public.leader_availability(period_id,leader_id,slot_id)
+   insert into public.leader_availability(period_id,leader_id,slot_id)
      select pid,lid,slot_ids[n] from generate_subscripts(slot_ids,1) n where coalesce((p_data->'availability'->idx->>(n-1))::boolean,false) on conflict do nothing;
    else
-    insert into public.teachers(name,class_name) values(trim(rec->>'name'),coalesce(rec->>'class_name','')) returning id into tid;
-    insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order,first_submitted_at,last_submitted_at,submission_source)
-    values(pid,tid,trim(rec->>'name'),coalesce(rec->>'class_name',''),(select coalesce(max(sort_order),0)+1 from public.period_teacher_status where period_id=pid),now(),now(),'import');
-    insert into public.teacher_slot_permissions(period_id,teacher_id,slot_id) select pid,tid,unnest(slot_ids) on conflict do nothing;
-    insert into public.teacher_availability(period_id,teacher_id,slot_id)
-     select pid,tid,slot_ids[n] from generate_subscripts(slot_ids,1) n where coalesce((p_data->'availability'->idx->>(n-1))::boolean,false) on conflict do nothing;
+    if not exists(select 1 from public.teachers where name=trim(rec->>'name')) then
+     insert into public.teachers(name,class_name) values(trim(rec->>'name'),coalesce(rec->>'class_name','')) returning id into tid;
+     insert into public.period_teacher_status(period_id,teacher_id,name_snapshot,class_snapshot,sort_order,first_submitted_at,last_submitted_at,submission_source)
+     values(pid,tid,trim(rec->>'name'),coalesce(rec->>'class_name',''),(select coalesce(max(sort_order),0)+1 from public.period_teacher_status where period_id=pid),now(),now(),'import');
+     insert into public.teacher_slot_permissions(period_id,teacher_id,slot_id) select pid,tid,unnest(slot_ids) on conflict do nothing;
+     insert into public.teacher_availability(period_id,teacher_id,slot_id)
+      select pid,tid,slot_ids[n] from generate_subscripts(slot_ids,1) n where coalesce((p_data->'availability'->idx->>(n-1))::boolean,false) on conflict do nothing;
+    end if;
    end if;
    idx=idx+1;
   end loop;
