@@ -172,6 +172,9 @@ begin
   if coalesce(p_data->>'status',period.status) not in ('draft','collecting','closed') then raise exception '请通过自动排期生成已排期状态'; end if;
   update public.meeting_periods set title=coalesce(p_data->>'title',title),status=coalesce(p_data->>'status',status),
    default_capacity=coalesce((p_data->>'default_capacity')::integer,default_capacity),timezone=coalesce(p_data->>'timezone',timezone) where id=pid;
+  if coalesce((p_data->>'apply_default_capacity')::boolean,false) then
+   update public.meeting_slots set capacity_override=null where period_id=pid;
+  end if;
  when 'teacher_save' then
   tid=nullif(p_data->>'id','')::uuid;
   if tid is null then
@@ -360,6 +363,11 @@ begin
   select pid,rid,av.leader_id,av.slot_id from public.leader_availability av join public.leaders l on l.id=av.leader_id where av.period_id=pid and l.active;
   update public.meeting_periods set status='scheduled' where id=pid;
   return jsonb_build_object('id',rid);
+ when 'clear_schedule' then
+  select count(*) into idx from public.schedule_runs where period_id=pid;
+  delete from public.schedule_runs where period_id=pid;
+  update public.meeting_periods set status='closed' where id=pid;
+  result=jsonb_build_object('cleared_runs',idx);
  else raise exception '不支持的操作';
  end case;
  if global_action then update public.meeting_periods set revision=revision+1 where id is not null;

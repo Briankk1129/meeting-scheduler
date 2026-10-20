@@ -16,7 +16,7 @@ export function render(ctx,chosenMonth) {
   await ctx.mutate('period_create',{year,month:number,title:f.title,timezone:f.timezone,default_capacity:f.default_capacity});
   if(f.status!=='draft')await ctx.mutate('period_update',{status:f.status});
  }
- bindForm('#meeting-settings',async f=>{if(existing)await ctx.mutate('period_update',{title:f.title,timezone:f.timezone,default_capacity:f.default_capacity,status:f.status});else await ensureMonth();});
+ bindForm('#meeting-settings',async f=>{if(existing)await ctx.mutate('period_update',{title:f.title,timezone:f.timezone,default_capacity:f.default_capacity,status:f.status,apply_default_capacity:true});else await ensureMonth();});
  $('#meeting-settings [name=month]').onchange=e=>{if(!e.target.validity.valid||!e.target.value)return;const [y,m]=e.target.value.split('-').map(Number),found=d.periods.find(x=>x.year===y&&x.month===m);if(found)busy(e.target,()=>ctx.selectPeriod(found.id));else render(ctx,e.target.value);};
  renderSlots({...ctx,period:current,data:{...d,slots:existing?d.slots:[]},root:root.querySelector('#meeting-times'),async mutate(action,payload){await ensureMonth();return ctx.mutate(action,payload);}});
 }
